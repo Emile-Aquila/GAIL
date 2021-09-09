@@ -2,8 +2,10 @@ import numpy as np
 import torch
 from model import ActorNetwork, CriticNetwork
 from algo import Algorithm
-from pfrl.replay_buffers import ReplayBuffer
+from pfrl.replay_buffers import ReplayBuffer as ReplayBuffer
 
+
+# from algo import ReplayBuffer
 
 class SAC(Algorithm):
     def __init__(self, state_shape, action_shape, seed=0,
@@ -16,6 +18,7 @@ class SAC(Algorithm):
         torch.cuda.manual_seed(seed)
 
         self.buffer = ReplayBuffer(capacity=buffer_size)
+
         self.actor = ActorNetwork(state_shape, action_shape).to(self.dev)
         self.critic = CriticNetwork(state_shape, action_shape).to(self.dev)
 
@@ -54,12 +57,13 @@ class SAC(Algorithm):
         else:
             action, _ = self.explore(state)
         n_state, rew, done, _ = env.step(action)
-
         done_masked = False if t == env._max_episode_steps else done  # 最大ステップ数に到達してdone=Trueになった場合を補正する.
-        self.buffer.append(state, action, rew, n_state, done_masked)  # add data to buffer
+        self.buffer.append(state=state, action=action, reward=rew, next_state=n_state, is_state_terminal=done_masked)
+        # add data to buffer
         if done:  # エピソードが終了した場合には，環境をリセットする．
             t = 0
             n_state = env.reset()
+            self.buffer.stop_current_episode()
         return n_state, t
 
     def update_critic(self, states, actions, rews, dones, n_states):
@@ -97,14 +101,11 @@ class SAC(Algorithm):
     def update(self):
         self.learning_steps += 1
         tmp = self.buffer.sample(self.batch_size)
-        # print(tmp)
-        # print(tmp[0])
-        states = torch.tensor([item[0]["state"] for item in tmp], dtype=torch.float, device=self.dev)
-        actions = torch.tensor([item[0]["action"] for item in tmp], dtype=torch.float, device=self.dev)
-        rews = torch.tensor([item[0]["reward"] for item in tmp], dtype=torch.float, device=self.dev)
-        dones = torch.tensor([item[0]["is_state_terminal"] for item in tmp], dtype=torch.float, device=self.dev)
-        n_states = torch.tensor([item[0]["next_state"] for item in tmp], dtype=torch.float, device=self.dev)
-
+        states = torch.as_tensor([item[0]["state"] for item in tmp], dtype=torch.float, device=self.dev)
+        actions = torch.as_tensor([item[0]["action"] for item in tmp], dtype=torch.float, device=self.dev)
+        rews = torch.as_tensor([[item[0]["reward"]] for item in tmp], dtype=torch.float, device=self.dev)
+        dones = torch.as_tensor([[item[0]["is_state_terminal"]] for item in tmp], dtype=torch.float, device=self.dev)
+        n_states = torch.as_tensor([item[0]["next_state"] for item in tmp], dtype=torch.float, device=self.dev)
         self.update_critic(states, actions, rews, dones, n_states)
         self.update_actor(states)
         self.update_target()

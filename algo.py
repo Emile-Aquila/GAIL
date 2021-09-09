@@ -104,6 +104,42 @@ class Trainer:
         plt.tight_layout()
 
 
+
+class ReplayBuffer:
+    def __init__(self, buffer_size, state_shape, action_shape):
+        self._idx = 0  # 次にデータを挿入するインデックス．
+        self._size = 0  # データ数．
+        self.buffer_size = buffer_size  # リプレイバッファのサイズ．
+
+        self.dev = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.states = torch.empty((buffer_size, *state_shape), dtype=torch.float, device=self.dev)
+        self.actions = torch.empty((buffer_size, *action_shape), dtype=torch.float, device=self.dev)
+        self.rewards = torch.empty((buffer_size, 1), dtype=torch.float, device=self.dev)
+        self.dones = torch.empty((buffer_size, 1), dtype=torch.float, device=self.dev)
+        self.next_states = torch.empty((buffer_size, *state_shape), dtype=torch.float, device=self.dev)
+
+    def append(self, state, action, reward, done, next_state):
+        self.states[self._idx].copy_(torch.from_numpy(state))
+        self.actions[self._idx].copy_(torch.from_numpy(action))
+        self.rewards[self._idx] = float(reward)
+        self.dones[self._idx] = float(done)
+        self.next_states[self._idx].copy_(torch.from_numpy(next_state))
+
+        self._idx = (self._idx + 1) % self.buffer_size
+        self._size = min(self._size + 1, self.buffer_size)
+
+    def sample(self, batch_size):
+        indexes = np.random.randint(low=0, high=self._size, size=batch_size)
+        return (
+            self.states[indexes],
+            self.actions[indexes],
+            self.rewards[indexes],
+            self.dones[indexes],
+            self.next_states[indexes]
+        )
+
+
+
 def wrap_monitor(env):
     return gym.wrappers.Monitor(env, './mp4', video_callable=lambda x: True, force=True)
 

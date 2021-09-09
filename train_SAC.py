@@ -15,6 +15,11 @@ EVAL_INTERVAL = 10 ** 3
 
 env = gym.make(ENV_ID)
 env_test = gym.make(ENV_ID)
+print("state {}".format(*env.observation_space.shape))
+print("act {}".format(*env.action_space.shape))
+
+state_shape = 3
+act_shape = 1
 
 algo = SAC(
     state_shape=env.observation_space.shape,
