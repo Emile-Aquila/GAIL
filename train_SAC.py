@@ -1,13 +1,13 @@
 import torch
 from algo import Trainer
 import pybullet_envs
-import pybullet
+# import pybullet
 import gym
 from SAC import SAC
 
 
-# ENV_ID = 'HalfCheetahBulletEnv-v0'
-ENV_ID = 'Pendulum-v0'
+ENV_ID = 'HalfCheetahBulletEnv-v0'
+# ENV_ID = 'Pendulum-v0'
 SEED = 0
 REWARD_SCALE = 1.0
 NUM_STEPS = 5 * 10 ** 4

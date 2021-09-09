@@ -5,6 +5,9 @@ import torch
 import matplotlib.pyplot as plt
 from time import time
 import gym
+import pybullet_envs
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 
 class Algorithm(ABC):
@@ -49,16 +52,22 @@ class Trainer:
         self.num_steps = num_steps  # データ収集を行うステップ数．
         self.eval_interval = eval_interval  # 評価の間のステップ数(インターバル)．
         self.num_eval_episodes = num_eval_episodes  # 評価を行うエピソード数．
+        self.writer = SummaryWriter(log_dir="./logs")
 
     def train(self):  # num_stepsステップの間，データ収集・学習・評価を繰り返す．
         self.start_time = time()
         t = 0  # エピソードのステップ数．
         state = self.env.reset()
-        for steps in range(1, self.num_steps + 1):
+        for steps in tqdm(range(1, self.num_steps + 1)):
             state, t = self.algo.step(self.env, state, t, steps)
 
             if self.algo.is_update(steps):
-                self.algo.update()
+                loss_critic1, loss_critic2, loss_actor, log_pis = self.algo.update()
+                self.writer.add_scalar("actor loss", loss_actor, steps)
+                self.writer.add_scalar("critic loss1", loss_critic1, steps)
+                self.writer.add_scalar("critic loss2", loss_critic2, steps)
+                self.writer.add_scalar("log pis", log_pis[0], steps)
+
             if steps % self.eval_interval == 0:  # 一定のインターバルで評価
                 self.evaluate(steps)
 
@@ -78,13 +87,15 @@ class Trainer:
         mean_return = np.mean(returns)
         self.returns['step'].append(steps)
         self.returns['return'].append(mean_return)
+        self.writer.add_scalar("rew", mean_return, steps)
 
         print(f'Num steps: {steps:<6}   '
               f'Return: {mean_return:<5.1f}   '
-              f'Time: {time()-self.start_time}')
+              f'Time: {time() - self.start_time}')
 
     def visualize(self):  # 1エピソード環境を動かし, mp4を再生
         env = wrap_monitor(gym.make(self.env.unwrapped.spec.id))
+        # env = wrap_monitor(gym.make(self.env_test))
         state = env.reset()
         done = False
 
@@ -102,7 +113,6 @@ class Trainer:
         plt.tick_params(labelsize=18)
         plt.title(f'{self.env.unwrapped.spec.id}', fontsize=24)
         plt.tight_layout()
-
 
 
 class ReplayBuffer:
@@ -137,7 +147,6 @@ class ReplayBuffer:
             self.dones[indexes],
             self.next_states[indexes]
         )
-
 
 
 def wrap_monitor(env):

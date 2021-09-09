@@ -6,16 +6,14 @@ from algo import reparameterize
 class ActorNetwork(nn.Module):
     def __init__(self, state_shape, action_shape):
         super().__init__()
-        num = 32
+        num = 64
         self.net = nn.Sequential(
             nn.Linear(state_shape[0], num),
             nn.ReLU(inplace=True),
             nn.Linear(num, num),
             nn.ReLU(inplace=True),
-            # nn.Linear(num, num),
-            # nn.ReLU(inplace=True),
-            # nn.Linear(num, num),
-            # nn.ReLU(inplace=True),
+            nn.Linear(num, num),
+            nn.ReLU(inplace=True),
             nn.Linear(num, 2 * action_shape[0]),
         )
 
@@ -37,16 +35,14 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, state_shape, action_shape):
         super().__init__()
-        num = 32
+        num = 64
         self.net1 = nn.Sequential(
             nn.Linear(state_shape[0] + action_shape[0], num),
             nn.ReLU(inplace=True),
             nn.Linear(num, num),
             nn.ReLU(inplace=True),
-            # nn.Linear(num, num),
-            # nn.ReLU(inplace=True),
-            # nn.Linear(num, num),
-            # nn.ReLU(inplace=True),
+            nn.Linear(num, num),
+            nn.ReLU(inplace=True),
             nn.Linear(num, 1),
         )
         self.net2 = nn.Sequential(
@@ -54,10 +50,8 @@ class CriticNetwork(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(num, num),
             nn.ReLU(inplace=True),
-            # nn.Linear(num, num),
-            # nn.ReLU(inplace=True),
-            # nn.Linear(num, num),
-            # nn.ReLU(inplace=True),
+            nn.Linear(num, num),
+            nn.ReLU(inplace=True),
             nn.Linear(num, 1),
         )
 

@@ -82,6 +82,7 @@ class SAC(Algorithm):
         self.optim_critic.zero_grad()
         (loss_c1 + loss_c2).backward(retain_graph=False)
         self.optim_critic.step()
+        return loss_c1.clone().detach(), loss_c2.clone().detach()
 
     def update_actor(self, states):
         acts, log_pis = self.actor.sample(states)
@@ -92,6 +93,7 @@ class SAC(Algorithm):
         loss_actor.backward(retain_graph=False)
         self.optim_actor.step()
         self.entropy_adjust_func(log_pis)
+        return loss_actor.clone().detach(), log_pis.clone().detach()
 
     def update_target(self):
         for target, trained in zip(self.critic_target.parameters(), self.critic.parameters()):
@@ -106,9 +108,11 @@ class SAC(Algorithm):
         rews = torch.as_tensor([[item[0]["reward"]] for item in tmp], dtype=torch.float, device=self.dev)
         dones = torch.as_tensor([[item[0]["is_state_terminal"]] for item in tmp], dtype=torch.float, device=self.dev)
         n_states = torch.as_tensor([item[0]["next_state"] for item in tmp], dtype=torch.float, device=self.dev)
-        self.update_critic(states, actions, rews, dones, n_states)
-        self.update_actor(states)
+
+        loss_critic1, loss_critic2 = self.update_critic(states, actions, rews, dones, n_states)
+        loss_actor, log_pis = self.update_actor(states)
         self.update_target()
+        return loss_critic1, loss_critic2, loss_actor, log_pis
 
     def entropy_adjust_func(self, log_pis):
         with torch.no_grad():
