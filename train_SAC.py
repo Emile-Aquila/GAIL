@@ -6,7 +6,8 @@ import gym
 from SAC import SAC
 
 
-ENV_ID = 'HalfCheetahBulletEnv-v0'
+# ENV_ID = 'HalfCheetahBulletEnv-v0'
+ENV_ID = 'Pendulum-v0'
 SEED = 0
 REWARD_SCALE = 1.0
 NUM_STEPS = 5 * 10 ** 4
@@ -20,6 +21,7 @@ algo = SAC(
     action_shape=env.action_space.shape,
     seed=SEED,
     reward_scale=REWARD_SCALE,
+    start_steps=5 * 10**2,
 )
 
 trainer = Trainer(
