@@ -8,6 +8,10 @@ import gym
 import pybullet_envs
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+from base64 import b64encode, b64decode
+import glob
+import os
+from IPython.display import HTML, display
 
 
 class Algorithm(ABC):
@@ -95,7 +99,7 @@ class Trainer:
 
     def visualize(self):  # 1エピソード環境を動かし, mp4を再生
         env = wrap_monitor(gym.make(self.env.unwrapped.spec.id))
-        # env = wrap_monitor(gym.make(self.env_test))
+        env.render()  # 必要らしい
         state = env.reset()
         done = False
 
@@ -150,6 +154,7 @@ class ReplayBuffer:
 
 
 def wrap_monitor(env):
+    env.render()
     return gym.wrappers.Monitor(env, './mp4', video_callable=lambda x: True, force=True)
 
 
@@ -171,3 +176,16 @@ def reparameterize(means, log_stds):
     acts = torch.tanh(tmp)
     log_pis = calc_log_pi(stds=stds, noises=noises, actions=acts)
     return acts, log_pis
+
+
+def play_mp4():
+    """ 保存したmp4をHTMLに埋め込み再生する関数． """
+    path = glob.glob(os.path.join('./mp4', '*.mp4'))
+
+    mp4 = open(path[0], 'rb').read()
+    url = "data:video/mp4;base64," + b64encode(mp4).decode()
+    html = HTML("""<video width=400 controls><source src="%s" type="video/mp4"></video>""" % url)
+    print(html.data)
+    with open("./data.html", "w") as file:
+        file.write(html.data)
+    display(html)

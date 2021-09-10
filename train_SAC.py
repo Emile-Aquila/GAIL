@@ -1,16 +1,17 @@
 import torch
-from algo import Trainer
+from algo import Trainer, play_mp4
 import pybullet_envs
-# import pybullet
+import pybullet
 import gym
 from SAC import SAC
 
 
-ENV_ID = 'HalfCheetahBulletEnv-v0'
+ENV_ID = 'BipedalWalker-v3'
 # ENV_ID = 'Pendulum-v0'
 SEED = 0
 REWARD_SCALE = 1.0
-NUM_STEPS = 5 * 10 ** 4
+NUM_STEPS = 5 * 10 ** 5
+# NUM_STEPS = 2 * 10 ** 3
 EVAL_INTERVAL = 10 ** 3
 
 env = gym.make(ENV_ID)
@@ -42,3 +43,4 @@ trainer.train()
 # trainer.plot()
 trainer.visualize()
 # trainer.visualize()
+# play_mp4()
