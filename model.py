@@ -6,7 +6,7 @@ from algo import reparameterize
 class ActorNetwork(nn.Module):
     def __init__(self, state_shape, action_shape):
         super().__init__()
-        num = 512
+        num = 128
         self.net = nn.Sequential(
             nn.Linear(state_shape[0], num),
             nn.ReLU(inplace=True),
@@ -35,7 +35,7 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, state_shape, action_shape):
         super().__init__()
-        num = 512
+        num = 128
         self.net1 = nn.Sequential(
             nn.Linear(state_shape[0] + action_shape[0], num),
             nn.ReLU(inplace=True),

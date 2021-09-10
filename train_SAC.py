@@ -6,8 +6,9 @@ import gym
 from SAC import SAC
 
 
-ENV_ID = 'BipedalWalker-v3'
+# ENV_ID = 'BipedalWalker-v3'
 # ENV_ID = 'Pendulum-v0'
+ENV_ID = "HalfCheetahBulletEnv-v0"
 SEED = 0
 REWARD_SCALE = 1.0
 NUM_STEPS = 5 * 10 ** 5

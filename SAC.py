@@ -121,3 +121,11 @@ class SAC(Algorithm):
         self.optim_alpha.zero_grad()
         loss.backward()
         self.optim_alpha.step()
+
+    def save_model(self):
+        torch.save(self.actor.cpu().state_dict(), './models/actor.pth')
+        self.actor.to(self.dev)
+        torch.save(self.critic.cpu().state_dict(), './models/critic.pth')
+        self.critic.to(self.dev)
+        torch.save(self.critic_target.cpu().state_dict(), './models/c_target.pth')
+        self.critic_target.to(self.dev)

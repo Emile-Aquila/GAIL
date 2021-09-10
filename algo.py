@@ -42,6 +42,10 @@ class Algorithm(ABC):
     def update(self):  # 1回分の学習stepを実行する
         pass
 
+    @abstractmethod
+    def save_model(self):  # modelを保存する
+        pass
+
 
 class Trainer:
     def __init__(self, env, env_test, algo, seed=0, num_steps=10 ** 6, eval_interval=10 ** 4, num_eval_episodes=3):
@@ -57,6 +61,7 @@ class Trainer:
         self.eval_interval = eval_interval  # 評価の間のステップ数(インターバル)．
         self.num_eval_episodes = num_eval_episodes  # 評価を行うエピソード数．
         self.writer = SummaryWriter(log_dir="./logs")
+        self.max_score = None
 
     def train(self):  # num_stepsステップの間，データ収集・学習・評価を繰り返す．
         self.start_time = time()
@@ -92,7 +97,10 @@ class Trainer:
         self.returns['step'].append(steps)
         self.returns['return'].append(mean_return)
         self.writer.add_scalar("rew", mean_return, steps)
-
+        if self.max_score is None or self.max_score > mean_return:
+            self.max_score = mean_return
+            self.algo.save_model()
+            print("model saved")
         print(f'Num steps: {steps:<6}   '
               f'Return: {mean_return:<5.1f}   '
               f'Time: {time() - self.start_time}')
