@@ -13,7 +13,7 @@ import gym
 
 class PPO(Algorithm):
     def __init__(self, state_shape, action_shape, seed=0, batch_size=512, gamma=0.995, lr_actor=3e-4, lr_critic=3e-4,
-                 rollout_length=2048, num_updates=32, clip_eps=0.2, lambd=0.97, coef_ent=3e-4,
+                 rollout_length=2048, num_updates=128, clip_eps=0.2, lambd=0.97, coef_ent=3e-4,
                  max_grad_norm=0.5, normalize_advantage=False):
         super().__init__()
 
@@ -78,7 +78,7 @@ class PPO(Algorithm):
         loss_critic.backward(retain_graph=True)
         nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
         self.optim_critic.step()
-        return loss_critic.detach().numpy()
+        return loss_critic.cpu().detach().numpy()
 
     def update_actor(self, states, actions, log_pis_old, advantages):
         log_pis = self.actor.evaluate_log_pi(states, actions)
@@ -91,7 +91,7 @@ class PPO(Algorithm):
         loss_actor.backward(retain_graph=False)
         nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
         self.optim_actor.step()
-        return loss_actor.detach().numpy()
+        return loss_actor.cpu().detach().numpy()
 
     def save_model(self):  # modelを保存する
         pass
@@ -117,6 +117,7 @@ if __name__ == '__main__':
     ENV_ID = 'BipedalWalker-v3'
     # ENV_ID = 'Pendulum-v0'
     # ENV_ID = "HalfCheetahBulletEnv-v0"
+    # ENV_ID = "BipedalWalkerHardcore-v3"
     SEED = 0
     REWARD_SCALE = 1.0
     NUM_STEPS = 5 * 10 ** 5
