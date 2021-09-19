@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from model import ActorNetwork, CriticNetwork
 from algo import Algorithm
-from pfrl.replay_buffers import ReplayBuffer as ReplayBuffer
+from pfrl.replay_buffers import ReplayBuffer
 
 
 # from algo import ReplayBuffer
@@ -59,6 +59,7 @@ class SAC(Algorithm):
         n_state, rew, done, _ = env.step(action)
         done_masked = False if t == env._max_episode_steps else done  # 最大ステップ数に到達してdone=Trueになった場合を補正する.
         self.buffer.append(state=state, action=action, reward=rew, next_state=n_state, is_state_terminal=done_masked)
+
         # add data to buffer
         if done:  # エピソードが終了した場合には，環境をリセットする．
             t = 0

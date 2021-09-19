@@ -12,6 +12,7 @@ from base64 import b64encode, b64decode
 import glob
 import os
 from IPython.display import HTML, display
+from dataclasses import dataclass
 
 
 class Algorithm(ABC):
@@ -71,11 +72,17 @@ class Trainer:
             state, t = self.algo.step(self.env, state, t, steps)
 
             if self.algo.is_update(steps):
-                loss_critic1, loss_critic2, loss_actor, log_pis = self.algo.update()
+                # SAC
+                # loss_critic1, loss_critic2, loss_actor, log_pis = self.algo.update()
+                # self.writer.add_scalar("actor loss", loss_actor, steps)
+                # self.writer.add_scalar("critic loss1", loss_critic1, steps)
+                # self.writer.add_scalar("critic loss2", loss_critic2, steps)
+                # self.writer.add_scalar("log pis", log_pis[0], steps)
+
+                # PPO
+                loss_actor, loss_critic = self.algo.update()
                 self.writer.add_scalar("actor loss", loss_actor, steps)
-                self.writer.add_scalar("critic loss1", loss_critic1, steps)
-                self.writer.add_scalar("critic loss2", loss_critic2, steps)
-                self.writer.add_scalar("log pis", log_pis[0], steps)
+                self.writer.add_scalar("critic loss", loss_critic, steps)
 
             if steps % self.eval_interval == 0:  # 一定のインターバルで評価
                 self.evaluate(steps)
@@ -140,7 +147,7 @@ class ReplayBuffer:
         self.dones = torch.empty((buffer_size, 1), dtype=torch.float, device=self.dev)
         self.next_states = torch.empty((buffer_size, *state_shape), dtype=torch.float, device=self.dev)
 
-    def append(self, state, action, reward, done, next_state):
+    def append(self, state, action, reward, next_state, done):
         self.states[self._idx].copy_(torch.from_numpy(state))
         self.actions[self._idx].copy_(torch.from_numpy(action))
         self.rewards[self._idx] = float(reward)
@@ -159,6 +166,33 @@ class ReplayBuffer:
             self.dones[indexes],
             self.next_states[indexes]
         )
+
+
+class RolloutBuffer:
+    def __init__(self, buffer_size, state_shape, action_shape):
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.states = torch.empty((buffer_size, *state_shape), dtype=torch.float, device=device)
+        self.actions = torch.empty((buffer_size, *action_shape), dtype=torch.float, device=device)
+        self.rewards = torch.empty((buffer_size, 1), dtype=torch.float, device=device)
+        self.dones = torch.empty((buffer_size, 1), dtype=torch.float, device=device)
+        self.log_pis = torch.empty((buffer_size, 1), dtype=torch.float, device=device)
+        self.next_states = torch.empty((buffer_size, *state_shape), dtype=torch.float, device=device)
+
+        self._p = 0
+        self.buffer_size = buffer_size
+
+    def append(self, state, action, reward, done, log_pi, next_state):
+        self.states[self._p].copy_(torch.from_numpy(state))
+        self.actions[self._p].copy_(torch.from_numpy(action))
+        self.rewards[self._p] = float(reward)
+        self.dones[self._p] = float(done)
+        self.log_pis[self._p] = float(log_pi)
+        self.next_states[self._p].copy_(torch.from_numpy(next_state))
+        self._p = (self._p + 1) % self.buffer_size
+
+    def get(self):
+        assert self._p == 0, 'Buffer needs to be full before training.'
+        return self.states, self.actions, self.rewards, self.dones, self.log_pis, self.next_states
 
 
 def wrap_monitor(env):
@@ -186,14 +220,6 @@ def reparameterize(means, log_stds):
     return acts, log_pis
 
 
-def play_mp4():
-    """ 保存したmp4をHTMLに埋め込み再生する関数． """
-    path = glob.glob(os.path.join('./mp4', '*.mp4'))
+def atanh(x):  # arc tan
+    return 0.5 * (torch.log(1 + x + 1e-6) - torch.log(1 - x + 1e-6))
 
-    mp4 = open(path[0], 'rb').read()
-    url = "data:video/mp4;base64," + b64encode(mp4).decode()
-    html = HTML("""<video width=400 controls><source src="%s" type="video/mp4"></video>""" % url)
-    print(html.data)
-    with open("./data.html", "w") as file:
-        file.write(html.data)
-    display(html)
