@@ -130,3 +130,49 @@ class SAC(Algorithm):
         self.critic.to(self.dev)
         torch.save(self.critic_target.cpu().state_dict(), './models/c_target.pth')
         self.critic_target.to(self.dev)
+
+    def load_weight(self, weight_path_actor, weight_path_critic):  # modelの重みを読み込む
+        self.actor.load(weight_path_actor).to(self.dev)
+        self.critic.load(weight_path_critic).to(self.dev)
+
+
+if __name__ == '__main__':
+    # ENV_ID = 'BipedalWalker-v3'
+    # ENV_ID = 'Pendulum-v0'
+    ENV_ID = "HalfCheetahBulletEnv-v0"
+    SEED = 0
+    REWARD_SCALE = 1.0
+    NUM_STEPS = 5 * 10 ** 5
+    # NUM_STEPS = 2 * 10 ** 3
+    EVAL_INTERVAL = 10 ** 3
+
+    env = gym.make(ENV_ID)
+    env_test = gym.make(ENV_ID)
+    print("state {}".format(*env.observation_space.shape))
+    print("act {}".format(*env.action_space.shape))
+
+    state_shape = 3
+    act_shape = 1
+
+    algo = SAC(
+        state_shape=env.observation_space.shape,
+        action_shape=env.action_space.shape,
+        seed=SEED,
+        reward_scale=REWARD_SCALE,
+        start_steps=5 * 10 ** 2,
+    )
+
+    trainer = Trainer(
+        env=env,
+        env_test=env_test,
+        algo=algo,
+        seed=SEED,
+        num_steps=NUM_STEPS,
+        eval_interval=EVAL_INTERVAL,
+    )
+
+    trainer.train()
+    # trainer.plot()
+    trainer.visualize()
+    # trainer.visualize()
+    # play_mp4()

@@ -47,6 +47,10 @@ class Algorithm(ABC):
     def save_model(self):  # modelを保存する
         pass
 
+    @abstractmethod
+    def load_weight(self, weight_path):  # modelの重みを読み込む
+        pass
+
 
 class Trainer:
     def __init__(self, env, env_test, algo, seed=0, num_steps=10 ** 6, eval_interval=10 ** 4, num_eval_episodes=3):
@@ -220,4 +224,3 @@ def reparameterize(means, log_stds):
 
 def atanh(x):  # arc tan
     return 0.5 * (torch.log(1 + x + 1e-6) - torch.log(1 - x + 1e-6))
-

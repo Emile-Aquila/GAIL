@@ -98,7 +98,11 @@ class PPO(Algorithm):
     def save_model(self):  # modelを保存する
         pass
 
+    def load_weight(self, weight_path):  # modelの重みを読み込む
+        pass
+
     def _calc_advantage(self, states, rews, dones, n_states, gamma, lambd):
+        # vのtargetとGAEを計算
         with torch.no_grad():
             v_states = self.critic(states)
             v_n_states = self.critic(n_states)
