@@ -73,16 +73,16 @@ class Trainer:
 
             if self.algo.is_update(steps):
                 # SAC
-                # loss_critic1, loss_critic2, loss_actor, log_pis = self.algo.update()
-                # self.writer.add_scalar("actor loss", loss_actor, steps)
-                # self.writer.add_scalar("critic loss1", loss_critic1, steps)
-                # self.writer.add_scalar("critic loss2", loss_critic2, steps)
-                # self.writer.add_scalar("log pis", log_pis[0], steps)
+                loss_critic1, loss_critic2, loss_actor, log_pis = self.algo.update()
+                self.writer.add_scalar("actor loss", loss_actor, steps)
+                self.writer.add_scalar("critic loss1", loss_critic1, steps)
+                self.writer.add_scalar("critic loss2", loss_critic2, steps)
+                self.writer.add_scalar("log pis", log_pis[0], steps)
 
                 # PPO
-                loss_actor, loss_critic = self.algo.update()
-                self.writer.add_scalar("actor loss", loss_actor, steps)
-                self.writer.add_scalar("critic loss", loss_critic, steps)
+                # loss_actor, loss_critic = self.algo.update()
+                # self.writer.add_scalar("actor loss", loss_actor, steps)
+                # self.writer.add_scalar("critic loss", loss_critic, steps)
 
             if steps % self.eval_interval == 0:  # 一定のインターバルで評価
                 self.evaluate(steps)
@@ -104,13 +104,11 @@ class Trainer:
         self.returns['step'].append(steps)
         self.returns['return'].append(mean_return)
         self.writer.add_scalar("rew", mean_return, steps)
-        if self.max_score is None or self.max_score > mean_return:
+        if self.max_score is None or self.max_score < mean_return:
             self.max_score = mean_return
             self.algo.save_model()
             print("model saved")
-        print(f'Num steps: {steps:<6}   '
-              f'Return: {mean_return:<5.1f}   '
-              f'Time: {time() - self.start_time}')
+        print(f'Num steps: {steps:<6}', f'Return: {mean_return:<5.3f}', f'Time: {time() - self.start_time:.4f}')
 
     def visualize(self):  # 1エピソード環境を動かし, mp4を再生
         env = wrap_monitor(gym.make(self.env.unwrapped.spec.id))

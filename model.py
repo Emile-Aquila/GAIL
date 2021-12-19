@@ -6,7 +6,7 @@ from algo import reparameterize, calc_log_pi, atanh
 class ActorNetwork(nn.Module):
     def __init__(self, state_shape, action_shape):
         super().__init__()
-        num = 128
+        num = 256
         self.net = nn.Sequential(
             nn.Linear(state_shape[0], num),
             nn.ReLU(inplace=True),
@@ -42,7 +42,7 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     def __init__(self, state_shape, action_shape):
         super().__init__()
-        num = 128
+        num = 256
         self.net1 = nn.Sequential(
             nn.Linear(state_shape[0] + action_shape[0], num),
             nn.ReLU(inplace=True),
@@ -71,7 +71,7 @@ class CriticNetwork(nn.Module):
 class CriticNetwork2(nn.Module):
     def __init__(self, state_shape):
         super().__init__()
-        num = 128
+        num = 256
         self.net1 = nn.Sequential(
             nn.Linear(state_shape[0], num),
             nn.ReLU(inplace=True),

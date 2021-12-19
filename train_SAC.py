@@ -1,5 +1,5 @@
 import torch
-from algo import Trainer, play_mp4
+from algo import Trainer
 import pybullet_envs
 import pybullet
 import gym

@@ -46,6 +46,8 @@ class PPO(Algorithm):
     def step(self, env, state, t, steps):  # 1step進める
         action, log_pi = self.explore(state)
         n_state, rew, done, _ = env.step(action)
+        if rew < -1.0:
+            rew = -1.0
         done_masked = False if t == env._max_episode_steps else done  # 最大ステップ数に到達してdone=Trueになった場合を補正する.
         self.buffer.append(state=state, action=action, reward=rew, next_state=n_state, done=done_masked, log_pi=log_pi)
         if done_masked:
@@ -114,13 +116,13 @@ class PPO(Algorithm):
 
 
 if __name__ == '__main__':
-    ENV_ID = 'BipedalWalker-v3'
+    # ENV_ID = 'BipedalWalker-v3'
     # ENV_ID = 'Pendulum-v0'
-    # ENV_ID = "HalfCheetahBulletEnv-v0"
+    ENV_ID = "HalfCheetahBulletEnv-v0"
     # ENV_ID = "BipedalWalkerHardcore-v3"
     SEED = 0
     REWARD_SCALE = 1.0
-    NUM_STEPS = 5 * 10 ** 5
+    NUM_STEPS = 1 * 10 ** 6 * 3
     # NUM_STEPS = 2 * 10 ** 3
     EVAL_INTERVAL = 10 ** 3
 
@@ -136,6 +138,10 @@ if __name__ == '__main__':
         state_shape=env.observation_space.shape,
         action_shape=env.action_space.shape,
         seed=SEED,
+        normalize_advantage=True,
+        clip_eps=0.2,
+        coef_ent=0.05,
+        max_grad_norm=1.0
     )
 
     trainer = Trainer(
