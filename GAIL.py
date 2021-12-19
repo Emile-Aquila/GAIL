@@ -1,10 +1,13 @@
 import numpy as np
 import torch
-from algo import Algorithm, RolloutBuffer
+from algo import Algorithm, RolloutBuffer, ReplayBuffer, wrap_monitor
 from model import ActorNetwork, CriticNetwork2
-from pfrl.replay_buffers import ReplayBuffer
+# from pfrl.replay_buffers import ReplayBuffer
+from tqdm import tqdm
 from torch import nn
 from PPO import PPO
+import gym
+from SAC import SAC
 
 class Discriminator(nn.Module):
     def __init__(self, state_shape, action_shape):
@@ -75,14 +78,15 @@ class GAIL(PPO):
 
 
 def run_agent(env_id, agent, replay_buffer, step_time, p_rand=0.0):
-    env = wrap_monitor(gym.make(env_id))
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # env = wrap_monitor(gym.make(env_id))
+    env = gym.make(env_id)
     state = env.reset()
-
-    for _ in range(step_time):
+    for _ in tqdm(range(step_time)):
         if np.random.rand() < p_rand:
             action = env.action_space.sample()
         else:
-            action = agent.explore(torch.tensor(state, dtype=torch.float, device=device).unsqueeze_(0)).cpu().numpy()[0]
+            action, _ = agent.explore(torch.tensor(state, dtype=torch.float, device=device))
             # action = add_random_noise(action, std)
         n_state, reward, done, _ = env.step(action)
         replay_buffer.append(state, action, reward, n_state, done)
@@ -103,9 +107,13 @@ if __name__ == '__main__':
         state_shape=env.observation_space.shape,
         action_shape=env.action_space.shape,
     )
+    weight_path_actor = "/home/emile/Documents/Code/GAIL/models/actor.pth"
+    weight_path_critic = "/home/emile/Documents/Code/GAIL/models/critic.pth"
+    buffer_length = 10**5
+    step_time = 10**5
     agent.load_weight(weight_path_actor, weight_path_critic)
-    replay_buffer = ReplayBuffer(buffer_length, state_shape, act_shape)
-    run_agent(ENV_ID, agent, replay_buffer, step_time, p_rand)
+    replay_buffer = ReplayBuffer(buffer_length, env.observation_space.shape, env.action_space.shape)
+    run_agent(ENV_ID, agent, replay_buffer, step_time, p_rand=0.1)
     # ここまでデータ収集
 
     BATCH_SIZE = 1000  # PPOの学習バッチサイズ．

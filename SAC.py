@@ -132,8 +132,8 @@ class SAC(Algorithm):
         self.critic_target.to(self.dev)
 
     def load_weight(self, weight_path_actor, weight_path_critic):  # modelの重みを読み込む
-        self.actor.load(weight_path_actor).to(self.dev)
-        self.critic.load(weight_path_critic).to(self.dev)
+        self.actor.load_state_dict(torch.load(weight_path_actor))
+        self.critic.load_state_dict(torch.load(weight_path_critic))
 
 
 if __name__ == '__main__':
