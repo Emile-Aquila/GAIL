@@ -1,5 +1,7 @@
 import torch
 from tensordict import TensorDict
+from torchrl.modules import ProbabilisticActor, ValueOperator
+
 from gail import Discriminator, GAILLoss
 from torchrl.envs.libs.gym import GymEnv
 import numpy as np
@@ -8,17 +10,17 @@ from tensordict.nn import TensorDictModule
 from torchrl.collectors import SyncDataCollector
 from torchrl.data import ReplayBuffer, LazyTensorStorage, SamplerWithoutReplacement
 from torchrl.envs import TransformedEnv, Compose, DoubleToFloat, StepCounter
-from torchrl.objectives import ClipPPOLoss
+from torchrl.objectives import ClipPPOLoss, KLPENPPOLoss
 from torchrl.objectives.value import GAE
 from torchrl.envs.utils import check_env_specs
 from simple_ppo import get_network
 from tqdm import tqdm
 
 
-def pretrain_gail(policy_module, value_module, expert_data: ReplayBuffer):
+def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator, expert_data: ReplayBuffer):
     # params
     discriminator_cells = 256
-    num_updates = 1000
+    num_updates = 50
     gail_step_size = 128
 
     clip_epsilon = (
@@ -30,7 +32,6 @@ def pretrain_gail(policy_module, value_module, expert_data: ReplayBuffer):
     lr = 3e-4
     max_grad_norm = 1.0
     frames_per_batch = 1000
-    total_frames = 50_000
 
     # Setting Envs
     base_env = GymEnv("InvertedDoublePendulum-v4")
@@ -42,11 +43,6 @@ def pretrain_gail(policy_module, value_module, expert_data: ReplayBuffer):
             StepCounter(),
         ),
     )
-
-    print("observation_spec:", env.observation_spec)
-    print("reward_spec:", env.reward_spec)
-    print("input_spec:", env.input_spec)
-    print("action_spec (as defined by input_spec):", env.action_spec)
 
     obs_shape = env.observation_spec["observation"].shape[-1]
     act_shape = env.action_spec.shape[-1]
@@ -60,7 +56,7 @@ def pretrain_gail(policy_module, value_module, expert_data: ReplayBuffer):
     )
 
     # PPO Module
-    loss_module = ClipPPOLoss(
+    loss_module = KLPENPPOLoss(
         actor_network=policy_module,
         critic_network=value_module,
         clip_epsilon=clip_epsilon,
@@ -74,6 +70,11 @@ def pretrain_gail(policy_module, value_module, expert_data: ReplayBuffer):
 
     # replay buffer
     replay_buffer = ReplayBuffer(
+        storage=LazyTensorStorage(max_size=frames_per_batch),
+        sampler=SamplerWithoutReplacement()
+    )
+
+    replay_buffer_ppo = ReplayBuffer(
         storage=LazyTensorStorage(max_size=frames_per_batch),
         sampler=SamplerWithoutReplacement()
     )
@@ -95,9 +96,7 @@ def pretrain_gail(policy_module, value_module, expert_data: ReplayBuffer):
 
     # training loop
     for i, tensordict_data in enumerate(collector):  # num_updates回分回す
-        with torch.no_grad():
-            advantage_module(tensordict_data)
-        data_view = tensordict_data.reshape(-1)
+        data_view = tensordict_data.clone().reshape(-1)
         replay_buffer.extend(data_view.cpu())
 
         for j in range(gail_step_size):
@@ -117,25 +116,41 @@ def pretrain_gail(policy_module, value_module, expert_data: ReplayBuffer):
             loss.backward()
             optim_gail.step()
 
-        loss_ppo = loss_module(data_view)
-        loss_value = (
-                loss_ppo["loss_objective"]
-                + loss_ppo["loss_critic"]
-                + loss_ppo["loss_entropy"]
-        )
-        loss_value.backward()
-        torch.nn.utils.clip_grad_norm_(loss_module.parameters(), max_grad_norm)
-        optim_ppo.step()
-        optim_ppo.zero_grad()
+        # PPO
+        tensordict_data_ppo = tensordict_data.clone()
+        tensordict_data_ppo["next"]["reward"] = disc(tensordict_data["observation"], tensordict_data["action"])
+
+        with torch.no_grad():
+            advantage_module(tensordict_data_ppo)
+        data_view = tensordict_data_ppo.reshape(-1)
+        replay_buffer_ppo.extend(data_view.cpu())
+
+        for j in range(frames_per_batch // gail_step_size):
+            subdata = replay_buffer_ppo.sample(gail_step_size)
+            loss_ppo = loss_module(subdata)
+            loss_value = (
+                    loss_ppo["loss_objective"]
+                    + loss_ppo["loss_critic"]
+                    + loss_ppo["loss_entropy"]
+            )
+            loss_value.backward()
+            torch.nn.utils.clip_grad_norm_(loss_module.parameters(), max_grad_norm)
+            optim_ppo.step()
+            optim_ppo.zero_grad()
+
+        print(f"step {i} finished")
+
+    torch.save(policy_module.module.state_dict(), "policy_gail.pth")
+    torch.save(value_module.state_dict(), "value_gail.pth")
 
 
 def get_dataset(env, data_size: int) -> ReplayBuffer:
     policy_module, value_module = get_network(
-        256,
+        64,
         env.action_spec,
     )
     policy_module.module.load_state_dict(torch.load("policy.pth"))
-    value_module.module.load_state_dict(torch.load("value.pth"))
+    value_module.load_state_dict(torch.load("value.pth"))
 
     collector = SyncDataCollector(
         env,
@@ -156,6 +171,18 @@ def get_dataset(env, data_size: int) -> ReplayBuffer:
     return rb
 
 
+def test_model(policy_module: ProbabilisticActor, env: TransformedEnv):
+    trial_times = 100
+    ave_reward = 0
+    ave_steps = 0
+    for i in range(trial_times):
+        tmp = env.rollout(1000, policy_module)
+        ave_reward += tmp["next"]["reward"].sum().item()
+        ave_steps += tmp["next"]["reward"].shape[0]
+    print("total reward:", ave_reward / trial_times)
+    print("average steps:", ave_steps / trial_times)
+
+
 if __name__ == "__main__":
     base_env = GymEnv("InvertedDoublePendulum-v4")
     env = TransformedEnv(
@@ -168,9 +195,23 @@ if __name__ == "__main__":
     )
 
     policy_module, value_module = get_network(
-        256,
+        64,
         env.action_spec,
     )
-    expert_data = get_dataset(env, 50000)
+    print("Running policy:", policy_module(env.reset()))
+    print("Running value:", value_module(env.reset()))
 
-    pretrain_gail(policy_module, value_module, expert_data)
+    # expert_data = get_dataset(env, 100000)
+    # expert_data.dumps("expert_data.pth")
+    # print("save expert data")
+    #
+    # pretrain_gail(policy_module, value_module, expert_data)
+
+    policy_module2, _ = get_network(64, env.action_spec)
+    policy_module2.module.load_state_dict(torch.load("policy.pth"))
+    test_model(policy_module2, env)
+
+    test_model(policy_module, env)
+
+    policy_module.module.load_state_dict(torch.load("policy_gail.pth"))
+    test_model(policy_module, env)
