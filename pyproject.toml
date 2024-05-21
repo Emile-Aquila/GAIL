@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "gail"
+version = "0.1.0"
+description = ""
+authors = ["Emile-Aquila <sample@sample.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+torchrl = "^0.4.0"
+tensordict = "^0.4.0"
+torch = "^2.3.0"
+numpy = "^1.26.4"
+matplotlib = "^3.9.0"
+tqdm = "^4.66.4"
+gym = "^0.26.2"
+mujoco = "^3.1.5"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
