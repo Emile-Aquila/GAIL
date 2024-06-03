@@ -1,19 +1,18 @@
 from collections import defaultdict
 from torchrl.envs.libs.gym import GymEnv
-import numpy as np
 import torch
-import torchrl
 import torch.nn as nn
 from tensordict.nn import NormalParamExtractor, TensorDictModule
 from torchrl.collectors import SyncDataCollector
 from torchrl.data import ReplayBuffer, LazyTensorStorage, SamplerWithoutReplacement, TensorSpec
-from torchrl.envs import TransformedEnv, Compose, ObservationNorm, DoubleToFloat, StepCounter
+from torchrl.envs import TransformedEnv, Compose, DoubleToFloat, StepCounter
 from torchrl.modules import ValueOperator, ProbabilisticActor, TanhNormal
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value import GAE
 from torchrl.envs.utils import check_env_specs, set_exploration_type, ExplorationType
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import os
 
 
 def get_network(num_cells: int, act_spec: TensorSpec):
@@ -38,7 +37,6 @@ def get_network(num_cells: int, act_spec: TensorSpec):
             "max": act_spec.space.high,
         },
         return_log_prob=True,
-        # we'll need the log-prob for the numerator of the importance weights
     )
 
     value_net = nn.Sequential(
@@ -57,19 +55,16 @@ def get_network(num_cells: int, act_spec: TensorSpec):
 
 if __name__ == "__main__":
     num_cells = 256
-    sub_batch_size = 64  # cardinality of the sub-samples gathered from the current data in the inner loop
-    num_epochs = 10  # optimization steps per batch of data collected
-    clip_epsilon = (
-        0.2  # clip value for PPO loss: see the equation in the intro for more context.
-    )
+    sub_batch_size = 64
+    num_epochs = 10
+    clip_epsilon = 0.2
     gamma = 0.99
     lmbda = 0.95
     entropy_eps = 1e-3
     lr = 3e-4
     max_grad_norm = 1.0
     frames_per_batch = 1000
-    total_frames = 50_000
-
+    total_frames = 50000
 
     # Setting Envs
     base_env = GymEnv("InvertedDoublePendulum-v4")
@@ -81,16 +76,12 @@ if __name__ == "__main__":
             StepCounter(),
         ),
     )
-    print("observation_spec:", env.observation_spec)
-    print("reward_spec:", env.reward_spec)
-    print("input_spec:", env.input_spec)
-    print("action_spec (as defined by input_spec):", env.action_spec)
-
 
     # Setting Actor Critic
     policy_module, value_module = get_network(64, env.action_spec)
-    print("Running policy:", policy_module(env.reset()))
-    print("Running value:", value_module(env.reset()))
+    policy_module(env.reset())
+    value_module(env.reset())
+    print("networks initialized")
 
     advantage_module = GAE(
         gamma=gamma, lmbda=lmbda, value_network=value_module, average_gae=True
@@ -106,8 +97,6 @@ if __name__ == "__main__":
         loss_critic_type="smooth_l1",
     )
 
-
-    # Setting Data Collector
     collector = SyncDataCollector(
         env,
         policy_module,
@@ -132,16 +121,8 @@ if __name__ == "__main__":
     pbar = tqdm(total=total_frames)
     eval_str = ""
 
-    # We iterate over the collector until it reaches the total number of frames it was
-    # designed to collect:
-
-
     for i, tensordict_data in enumerate(collector):
-        # we now have a batch of data to work with. Let's learn something from it.
         for _ in range(num_epochs):
-            # We'll need an "advantage" signal to make PPO work.
-            # We re-compute it at each epoch as its value depends on the value
-            # network which is updated in the inner loop.
             with torch.no_grad():
                 advantage_module(tensordict_data)
             data_view = tensordict_data.reshape(-1)
@@ -155,10 +136,7 @@ if __name__ == "__main__":
                         + loss_vals["loss_entropy"]
                 )
 
-                # Optimization: backward, grad clipping and optimization step
                 loss_value.backward()
-                # this is not strictly mandatory but it's good practice to keep
-                # your gradient norm bounded
                 torch.nn.utils.clip_grad_norm_(loss_module.parameters(), max_grad_norm)
                 optim.step()
                 optim.zero_grad()
@@ -173,19 +151,10 @@ if __name__ == "__main__":
         logs["lr"].append(optim.param_groups[0]["lr"])
         lr_str = f"lr policy: {logs['lr'][-1]: 4.4f}"
         if i % 10 == 0:
-            # We evaluate the policy once every 10 batches of data.
-            # Evaluation is rather simple: execute the policy without exploration
-            # (take the expected value of the action distribution) for a given
-            # number of steps (1000, which is our ``env`` horizon).
-            # The ``rollout`` method of the ``env`` can take a policy as argument:
-            # it will then execute this policy at each step.
             with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
-                # execute a rollout with the trained policy
                 eval_rollout = env.rollout(1000, policy_module)
                 logs["eval reward"].append(eval_rollout["next", "reward"].mean().item())
-                logs["eval reward (sum)"].append(
-                    eval_rollout["next", "reward"].sum().item()
-                )
+                logs["eval reward (sum)"].append(eval_rollout["next", "reward"].sum().item())
                 logs["eval step_count"].append(eval_rollout["step_count"].max().item())
                 eval_str = (
                     f"eval cumulative reward: {logs['eval reward (sum)'][-1]: 4.4f} "
@@ -196,8 +165,12 @@ if __name__ == "__main__":
         pbar.set_description(", ".join([eval_str, cum_reward_str, stepcount_str, lr_str]))
         scheduler.step()
 
-    torch.save(policy_module.module.state_dict(), "policy.pth")
-    torch.save(value_module.state_dict(), "value.pth")
+    # mkdir
+    if not os.path.exists("./datas"):
+        os.makedirs("./datas")
+
+    torch.save(policy_module.module.state_dict(), "./datas/policy.pth")
+    torch.save(value_module.state_dict(), "./datas/value.pth")
 
     plt.figure(figsize=(10, 10))
     plt.subplot(2, 2, 1)

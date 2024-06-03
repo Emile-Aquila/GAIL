@@ -1,4 +1,3 @@
-import torch
 from tensordict import TensorDict
 from torchrl.modules import ProbabilisticActor, ValueOperator
 
@@ -10,14 +9,15 @@ from tensordict.nn import TensorDictModule
 from torchrl.collectors import SyncDataCollector
 from torchrl.data import ReplayBuffer, LazyTensorStorage, SamplerWithoutReplacement
 from torchrl.envs import TransformedEnv, Compose, DoubleToFloat, StepCounter
-from torchrl.objectives import ClipPPOLoss, KLPENPPOLoss
+from torchrl.objectives import KLPENPPOLoss
 from torchrl.objectives.value import GAE
 from torchrl.envs.utils import check_env_specs
 from simple_ppo import get_network
 from tqdm import tqdm
+import os
 
 
-def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator, expert_data: ReplayBuffer):
+def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator, expert_data: ReplayBuffer) -> None:
     # params
     discriminator_cells = 256
     num_updates = 50
@@ -46,8 +46,6 @@ def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator
 
     obs_shape = env.observation_spec["observation"].shape[-1]
     act_shape = env.action_spec.shape[-1]
-
-    print(env.observation_spec.shape)
     check_env_specs(env)
 
     # Advantage
@@ -95,7 +93,7 @@ def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator
     optim_gail = torch.optim.Adam(gail_loss.parameters())
 
     # training loop
-    for i, tensordict_data in enumerate(collector):  # num_updates回分回す
+    for i, tensordict_data in tqdm(enumerate(collector)):  # num_updates回分回す
         data_view = tensordict_data.clone().reshape(-1)
         replay_buffer.extend(data_view.cpu())
 
@@ -138,19 +136,21 @@ def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator
             optim_ppo.step()
             optim_ppo.zero_grad()
 
-        print(f"step {i} finished")
+    # mkdir
+    if not os.path.exists("datas"):
+        os.makedirs("datas")
 
-    torch.save(policy_module.module.state_dict(), "policy_gail.pth")
-    torch.save(value_module.state_dict(), "value_gail.pth")
+    torch.save(policy_module.module.state_dict(), "./datas/policy_gail.pth")
+    torch.save(value_module.state_dict(), "./datas/value_gail.pth")
 
 
-def get_dataset(env, data_size: int) -> ReplayBuffer:
+def get_dataset(env: TransformedEnv, data_size: int) -> ReplayBuffer:
     policy_module, value_module = get_network(
         64,
         env.action_spec,
     )
-    policy_module.module.load_state_dict(torch.load("policy.pth"))
-    value_module.load_state_dict(torch.load("value.pth"))
+    policy_module.module.load_state_dict(torch.load("datas/policy.pth"))
+    value_module.load_state_dict(torch.load("datas/value.pth"))
 
     collector = SyncDataCollector(
         env,
@@ -171,7 +171,7 @@ def get_dataset(env, data_size: int) -> ReplayBuffer:
     return rb
 
 
-def test_model(policy_module: ProbabilisticActor, env: TransformedEnv):
+def test_model(policy_module: ProbabilisticActor, env: TransformedEnv) -> None:
     trial_times = 100
     ave_reward = 0
     ave_steps = 0
@@ -184,6 +184,9 @@ def test_model(policy_module: ProbabilisticActor, env: TransformedEnv):
 
 
 if __name__ == "__main__":
+    torch.manual_seed(0)
+    np.random.seed(0)
+
     base_env = GymEnv("InvertedDoublePendulum-v4")
     env = TransformedEnv(
         base_env,
@@ -198,20 +201,25 @@ if __name__ == "__main__":
         64,
         env.action_spec,
     )
-    print("Running policy:", policy_module(env.reset()))
-    print("Running value:", value_module(env.reset()))
 
-    # expert_data = get_dataset(env, 100000)
-    # expert_data.dumps("expert_data.pth")
-    # print("save expert data")
-    #
-    # pretrain_gail(policy_module, value_module, expert_data)
+    # Setting Actor, Critic
+    policy_module(env.reset())
+    value_module(env.reset())
+    print("network initialized")
 
+    expert_data = get_dataset(env, 100000)
+    expert_data.dumps("expert_data.pth")
+    print("save expert data")
+
+    print("start GAIL training")
+    pretrain_gail(policy_module, value_module, expert_data)
+
+    print("start testing")
     policy_module2, _ = get_network(64, env.action_spec)
-    policy_module2.module.load_state_dict(torch.load("policy.pth"))
+    policy_module2.module.load_state_dict(torch.load("datas/policy.pth"))
     test_model(policy_module2, env)
 
     test_model(policy_module, env)
 
-    policy_module.module.load_state_dict(torch.load("policy_gail.pth"))
+    policy_module.module.load_state_dict(torch.load("./datas/policy_gail.pth"))
     test_model(policy_module, env)
