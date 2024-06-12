@@ -15,34 +15,27 @@ from torchrl.envs.utils import check_env_specs
 from simple_ppo import get_network
 from tqdm import tqdm
 import os
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from torchrl.envs.utils import check_env_specs, set_exploration_type, ExplorationType
 
 
-def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator, expert_data: ReplayBuffer) -> None:
+def pretrain_gail(env: TransformedEnv, policy_module: ProbabilisticActor, value_module: ValueOperator,
+                  expert_data: ReplayBuffer) -> None:
     # params
     discriminator_cells = 256
-    num_updates = 50
+    num_updates = 100
     gail_step_size = 128
 
     clip_epsilon = (
-        0.2  # clip value for PPO loss: see the equation in the intro for more context.
+        0.3  # clip value for PPO loss: see the equation in the intro for more context.
     )
     gamma = 0.99
     lmbda = 0.95
     entropy_eps = 1e-3
     lr = 3e-4
     max_grad_norm = 1.0
-    frames_per_batch = 1000
-
-    # Setting Envs
-    base_env = GymEnv("InvertedDoublePendulum-v4")
-    env = TransformedEnv(
-        base_env,
-        Compose(
-            # normalize observations
-            DoubleToFloat(),
-            StepCounter(),
-        ),
-    )
+    frames_per_batch = 2000
 
     obs_shape = env.observation_spec["observation"].shape[-1]
     act_shape = env.action_spec.shape[-1]
@@ -146,7 +139,7 @@ def pretrain_gail(policy_module: ProbabilisticActor, value_module: ValueOperator
 
 def get_dataset(env: TransformedEnv, data_size: int) -> ReplayBuffer:
     policy_module, value_module = get_network(
-        64,
+        128,
         env.action_spec,
     )
     policy_module.module.load_state_dict(torch.load("datas/policy.pth"))
@@ -156,7 +149,7 @@ def get_dataset(env: TransformedEnv, data_size: int) -> ReplayBuffer:
         env,
         policy_module,
         frames_per_batch=data_size,
-        total_frames=1,
+        total_frames=data_size,
         split_trajs=False,
     )
 
@@ -171,34 +164,60 @@ def get_dataset(env: TransformedEnv, data_size: int) -> ReplayBuffer:
     return rb
 
 
-def test_model(policy_module: ProbabilisticActor, env: TransformedEnv) -> None:
-    trial_times = 100
+def test_model(env: TransformedEnv, policy_module: ProbabilisticActor, render: bool, file_name: str = "") -> None:
+    trial_times = 10
     ave_reward = 0
     ave_steps = 0
-    for i in range(trial_times):
-        tmp = env.rollout(1000, policy_module)
+    for i in tqdm(range(trial_times)):
+        with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
+            tmp = env.rollout(3000, policy_module)
         ave_reward += tmp["next"]["reward"].sum().item()
         ave_steps += tmp["next"]["reward"].shape[0]
     print("total reward:", ave_reward / trial_times)
     print("average steps:", ave_steps / trial_times)
+
+    if render:
+        with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
+            datas = env.rollout(3000, policy_module)
+        frames = datas["pixels"]
+
+        fig, ax = plt.subplots()
+
+        def update_anim(frame) -> None:
+            ax.cla()
+            ax.imshow(frame)
+            ax.axis("off")
+
+        ani = FuncAnimation(fig, update_anim, frames=frames, interval=50)
+        if not os.path.exists("movies"):
+            os.makedirs("movies")
+
+        ani.save("./movies/{}.gif".format(file_name), writer="pillow")
 
 
 if __name__ == "__main__":
     torch.manual_seed(0)
     np.random.seed(0)
 
-    base_env = GymEnv("InvertedDoublePendulum-v4")
+    base_env = GymEnv("BipedalWalker-v3")
+    pixel_env_ = GymEnv("BipedalWalker-v3", from_pixels=True, pixels_only=False)
     env = TransformedEnv(
         base_env,
         Compose(
-            # normalize observations
+            DoubleToFloat(),
+            StepCounter(),
+        ),
+    )
+    pixel_env = TransformedEnv(
+        pixel_env_,
+        Compose(
             DoubleToFloat(),
             StepCounter(),
         ),
     )
 
     policy_module, value_module = get_network(
-        64,
+        128,
         env.action_spec,
     )
 
@@ -207,19 +226,25 @@ if __name__ == "__main__":
     value_module(env.reset())
     print("network initialized")
 
-    expert_data = get_dataset(env, 100000)
-    expert_data.dumps("expert_data.pth")
-    print("save expert data")
+    if not os.path.exists("expert_data.pth"):
+        expert_data = get_dataset(env, 100000)
+        expert_data.dumps("expert_data.pth")
+        print("save expert data")
+    else:
+        expert_data: ReplayBuffer = ReplayBuffer(
+            storage=LazyTensorStorage(max_size=100000),
+            sampler=SamplerWithoutReplacement()
+        )
+        expert_data.loads(path="expert_data.pth")
+        print("load expert data")
 
     print("start GAIL training")
-    pretrain_gail(policy_module, value_module, expert_data)
+    pretrain_gail(env, policy_module, value_module, expert_data)
 
     print("start testing")
-    policy_module2, _ = get_network(64, env.action_spec)
+    policy_module2, _ = get_network(128, env.action_spec)
     policy_module2.module.load_state_dict(torch.load("datas/policy.pth"))
-    test_model(policy_module2, env)
-
-    test_model(policy_module, env)
+    test_model(pixel_env, policy_module2, True, "ppo")
 
     policy_module.module.load_state_dict(torch.load("./datas/policy_gail.pth"))
-    test_model(policy_module, env)
+    test_model(pixel_env, policy_module, True, "gail")

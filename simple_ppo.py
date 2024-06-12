@@ -36,6 +36,7 @@ def get_network(num_cells: int, act_spec: TensorSpec):
             "min": act_spec.space.low,
             "max": act_spec.space.high,
         },
+        default_interaction_type=ExplorationType.RANDOM,
         return_log_prob=True,
     )
 
@@ -54,20 +55,20 @@ def get_network(num_cells: int, act_spec: TensorSpec):
 
 
 if __name__ == "__main__":
-    num_cells = 256
+    num_cells = 128
     sub_batch_size = 64
     num_epochs = 10
     clip_epsilon = 0.2
     gamma = 0.99
     lmbda = 0.95
-    entropy_eps = 1e-3
+    entropy_eps = 3e-4
     lr = 3e-4
     max_grad_norm = 1.0
-    frames_per_batch = 1000
-    total_frames = 50000
+    frames_per_batch = 5000
+    total_frames = 100000
 
     # Setting Envs
-    base_env = GymEnv("InvertedDoublePendulum-v4")
+    base_env = GymEnv("BipedalWalker-v3")
     env = TransformedEnv(
         base_env,
         Compose(
@@ -78,7 +79,7 @@ if __name__ == "__main__":
     )
 
     # Setting Actor Critic
-    policy_module, value_module = get_network(64, env.action_spec)
+    policy_module, value_module = get_network(num_cells, env.action_spec)
     policy_module(env.reset())
     value_module(env.reset())
     print("networks initialized")
@@ -150,9 +151,9 @@ if __name__ == "__main__":
         stepcount_str = f"step count (max): {logs['step_count'][-1]}"
         logs["lr"].append(optim.param_groups[0]["lr"])
         lr_str = f"lr policy: {logs['lr'][-1]: 4.4f}"
-        if i % 10 == 0:
+        if i % 5 == 0:
             with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
-                eval_rollout = env.rollout(1000, policy_module)
+                eval_rollout = env.rollout(3000, policy_module)
                 logs["eval reward"].append(eval_rollout["next", "reward"].mean().item())
                 logs["eval reward (sum)"].append(eval_rollout["next", "reward"].sum().item())
                 logs["eval step_count"].append(eval_rollout["step_count"].max().item())

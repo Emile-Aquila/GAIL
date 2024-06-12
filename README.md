@@ -8,7 +8,21 @@ check the pyproject.toml file for the required packages.
 
 
 ## Usage
+
+### Install dependencies
 ```bash
-python main.py
+poetry install
 ```
+
+### PPO training
+```bash
+poetry run python simple_ppo.py
+```
+
+### GAIL training
+```bash
+poetry run python main.py
+```
+
+
 
